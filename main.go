@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -79,6 +80,27 @@ func main() {
 			"status": "ok",
 			"time":   time.Now().Format(time.RFC3339),
 			"uptime": time.Since(startTime).String(),
+		})
+	})
+
+	// Debug check endpoint to inspect PTT response from Render
+	mux.HandleFunc("/debug/check", func(w http.ResponseWriter, r *http.Request) {
+		board := r.URL.Query().Get("b")
+		if board == "" {
+			board = "stock"
+		}
+		arts, err := pttCrawler.FetchArticles(board)
+		rssArts, rssErr := pttCrawler.FetchArticlesRSS(board)
+		exists := pttCrawler.CheckBoardExist(board)
+
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"board":      board,
+			"exists":     exists,
+			"html_count": len(arts),
+			"html_err":   fmt.Sprint(err),
+			"rss_count":  len(rssArts),
+			"rss_err":    fmt.Sprint(rssErr),
 		})
 	})
 
