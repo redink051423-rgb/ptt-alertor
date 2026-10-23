@@ -1,0 +1,14 @@
+# Binaries
+ptt-alertor
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Environment variables & secrets
+.env
+*.local
+
+# OS files
+.DS_Store
+Thumbs.db

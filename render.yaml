@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: ptt-alertor
+    env: docker
+    plan: free
+    region: singapore
+    dockerfilePath: Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: CHECK_INTERVAL_SECONDS
+        value: 15
+      - key: CLEANUP_INTERVAL_HOURS
+        value: 24
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
