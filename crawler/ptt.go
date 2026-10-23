@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
+	"net/url"
 	"strings"
 	"time"
 
@@ -17,8 +19,22 @@ type Crawler struct {
 }
 
 func NewCrawler() *Crawler {
+	jar, _ := cookiejar.New(nil)
+	u, _ := url.Parse("https://www.ptt.cc")
+	if jar != nil && u != nil {
+		jar.SetCookies(u, []*http.Cookie{
+			{
+				Name:   "over18",
+				Value:  "1",
+				Path:   "/",
+				Domain: ".ptt.cc",
+			},
+		})
+	}
+
 	return &Crawler{
 		client: &http.Client{
+			Jar:     jar,
 			Timeout: 10 * time.Second,
 		},
 	}
@@ -37,19 +53,37 @@ func (c *Crawler) newRequest(method, urlStr string) (*http.Request, error) {
 // CheckBoardExist verifies if a PTT board exists
 func (c *Crawler) CheckBoardExist(board string) bool {
 	board = strings.TrimSpace(board)
+	if board == "" {
+		return false
+	}
+
+	// 1. Try HTML
 	urlStr := fmt.Sprintf("https://www.ptt.cc/bbs/%s/index.html", board)
 	req, err := c.newRequest("GET", urlStr)
-	if err != nil {
-		return false
+	if err == nil {
+		resp, err := c.client.Do(req)
+		if err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return true
+			}
+		}
 	}
 
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return false
+	// 2. Try RSS Atom as fallback
+	rssURL := fmt.Sprintf("https://www.ptt.cc/atom/%s.xml", board)
+	reqRSS, err := c.newRequest("GET", rssURL)
+	if err == nil {
+		resp, err := c.client.Do(reqRSS)
+		if err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return true
+			}
+		}
 	}
-	defer resp.Body.Close()
 
-	return resp.StatusCode == http.StatusOK
+	return false
 }
 
 // FetchArticles fetches recent articles from the board's index page

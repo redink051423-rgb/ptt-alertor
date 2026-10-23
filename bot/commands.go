@@ -176,20 +176,19 @@ func (h *CommandHandler) handleAddKeyword(lineID string, parts []string) string 
 	var notExistBoards []string
 	for _, b := range boards {
 		bLower := strings.ToLower(b)
-		if !h.crawler.CheckBoardExist(bLower) {
-			notExistBoards = append(notExistBoards, b)
-			continue
-		}
 		for _, kw := range keywords {
 			if err := h.db.AddSubscription(lineID, bLower, models.SubTypeKeyword, kw); err == nil {
 				addedCount++
 			}
 		}
+		if !h.crawler.CheckBoardExist(bLower) {
+			notExistBoards = append(notExistBoards, b)
+		}
 	}
 
 	res := fmt.Sprintf("新增關鍵字成功！已追蹤 %d 筆規則。", addedCount)
 	if len(notExistBoards) > 0 {
-		res += fmt.Sprintf("\n注意：看板 [%s] 不存在或無文章，請確認拼字。", strings.Join(notExistBoards, ", "))
+		res += fmt.Sprintf("\n提醒：PTT 目前暫無法即時驗證看板 [%s]，但已成功為你建立追蹤，請確認拼字是否正確。", strings.Join(notExistBoards, ", "))
 	}
 	return res
 }
@@ -230,20 +229,19 @@ func (h *CommandHandler) handleAddAuthor(lineID string, parts []string) string {
 	var notExistBoards []string
 	for _, b := range boards {
 		bLower := strings.ToLower(b)
-		if !h.crawler.CheckBoardExist(bLower) {
-			notExistBoards = append(notExistBoards, b)
-			continue
-		}
 		for _, a := range authors {
 			if err := h.db.AddSubscription(lineID, bLower, models.SubTypeAuthor, a); err == nil {
 				addedCount++
 			}
 		}
+		if !h.crawler.CheckBoardExist(bLower) {
+			notExistBoards = append(notExistBoards, b)
+		}
 	}
 
 	res := fmt.Sprintf("新增作者成功！已追蹤 %d 筆作者規則。", addedCount)
 	if len(notExistBoards) > 0 {
-		res += fmt.Sprintf("\n注意：看板 [%s] 不存在，請確認拼字。", strings.Join(notExistBoards, ", "))
+		res += fmt.Sprintf("\n提醒：PTT 目前暫無法即時驗證看板 [%s]，但已成功為你建立追蹤，請確認拼字是否正確。", strings.Join(notExistBoards, ", "))
 	}
 	return res
 }
