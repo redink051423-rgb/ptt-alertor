@@ -87,7 +87,7 @@ func main() {
 	mux.HandleFunc("/debug/check", func(w http.ResponseWriter, r *http.Request) {
 		board := r.URL.Query().Get("b")
 		if board == "" {
-			board = "stock"
+			board = "Stock"
 		}
 		arts, err := pttCrawler.FetchArticles(board)
 		rssArts, rssErr := pttCrawler.FetchArticlesRSS(board)
