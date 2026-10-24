@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
@@ -79,6 +81,24 @@ func main() {
 			"status": "ok",
 			"time":   time.Now().Format(time.RFC3339),
 			"uptime": time.Since(startTime).String(),
+		})
+	})
+
+	// Diagnostic fetch endpoint
+	mux.HandleFunc("/debug/fetch", func(w http.ResponseWriter, r *http.Request) {
+		b := r.URL.Query().Get("b")
+		if b == "" {
+			b = "MacShop"
+		}
+		rssArts, rssErr := pttCrawler.FetchArticlesRSS(b)
+		curlOut, curlErr := exec.Command("curl", "-s", "-i", "-b", "over18=1", "-A", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36", "https://www.ptt.cc/atom/"+b+".xml").CombinedOutput()
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"board":        b,
+			"rss_count":    len(rssArts),
+			"rss_err":      fmt.Sprint(rssErr),
+			"curl_err":     fmt.Sprint(curlErr),
+			"curl_snippet": string(curlOut[:min(len(curlOut), 400)]),
 		})
 	})
 
