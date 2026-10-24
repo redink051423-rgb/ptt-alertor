@@ -2,6 +2,7 @@ package bot
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -10,6 +11,12 @@ import (
 	"github.com/ptt-alertor/ptt-alertor/models"
 	"github.com/ptt-alertor/ptt-alertor/storage"
 )
+
+var boardRegex = regexp.MustCompile(`^[a-zA-Z0-9_\-]{2,30}$`)
+
+func isValidBoardName(name string) bool {
+	return boardRegex.MatchString(strings.TrimSpace(name))
+}
 
 type QuotaGetter func(forceFresh bool) (QuotaInfo, error)
 
@@ -203,8 +210,13 @@ func (h *CommandHandler) handleAddKeyword(lineID string, parts []string) string 
 		return "格式錯誤：看板名稱與關鍵字不可為空。"
 	}
 
+	for _, b := range boards {
+		if !isValidBoardName(b) {
+			return fmt.Sprintf("看板名稱格式不正確：[%s]（僅能包含英數字與底線，長度 2~30 字元）。", b)
+		}
+	}
+
 	var addedCount int
-	var notExistBoards []string
 	for _, b := range boards {
 		bLower := strings.ToLower(b)
 		for _, kw := range keywords {
@@ -212,16 +224,9 @@ func (h *CommandHandler) handleAddKeyword(lineID string, parts []string) string 
 				addedCount++
 			}
 		}
-		if !h.crawler.CheckBoardExist(bLower) {
-			notExistBoards = append(notExistBoards, b)
-		}
 	}
 
-	res := fmt.Sprintf("新增關鍵字成功！已追蹤 %d 筆規則。", addedCount)
-	if len(notExistBoards) > 0 {
-		res += fmt.Sprintf("\n提醒：PTT 目前暫無法即時驗證看板 [%s]，但已成功為你建立追蹤，請確認拼字是否正確。", strings.Join(notExistBoards, ", "))
-	}
-	return res
+	return fmt.Sprintf("新增關鍵字成功！已追蹤 %d 筆規則。", addedCount)
 }
 
 func (h *CommandHandler) handleRemoveKeyword(lineID string, parts []string) string {
@@ -256,8 +261,13 @@ func (h *CommandHandler) handleAddAuthor(lineID string, parts []string) string {
 		return "格式錯誤：看板名稱與作者帳號不可為空。"
 	}
 
+	for _, b := range boards {
+		if !isValidBoardName(b) {
+			return fmt.Sprintf("看板名稱格式不正確：[%s]（僅能包含英數字與底線，長度 2~30 字元）。", b)
+		}
+	}
+
 	var addedCount int
-	var notExistBoards []string
 	for _, b := range boards {
 		bLower := strings.ToLower(b)
 		for _, a := range authors {
@@ -265,16 +275,9 @@ func (h *CommandHandler) handleAddAuthor(lineID string, parts []string) string {
 				addedCount++
 			}
 		}
-		if !h.crawler.CheckBoardExist(bLower) {
-			notExistBoards = append(notExistBoards, b)
-		}
 	}
 
-	res := fmt.Sprintf("新增作者成功！已追蹤 %d 筆作者規則。", addedCount)
-	if len(notExistBoards) > 0 {
-		res += fmt.Sprintf("\n提醒：PTT 目前暫無法即時驗證看板 [%s]，但已成功為你建立追蹤，請確認拼字是否正確。", strings.Join(notExistBoards, ", "))
-	}
-	return res
+	return fmt.Sprintf("新增作者成功！已追蹤 %d 筆作者規則。", addedCount)
 }
 
 func (h *CommandHandler) handleRemoveAuthor(lineID string, parts []string) string {
@@ -313,6 +316,12 @@ func (h *CommandHandler) handleAddPushSum(lineID string, parts []string) string 
 			return "推文數門檻需為 0 至 100 之數字，或「爆」。"
 		}
 		threshold = strconv.Itoa(num)
+	}
+
+	for _, b := range boards {
+		if !isValidBoardName(b) {
+			return fmt.Sprintf("看板名稱格式不正確：[%s]（僅能包含英數字與底線，長度 2~30 字元）。", b)
+		}
 	}
 
 	var addedCount int
