@@ -121,7 +121,8 @@ func (c *Crawler) CheckBoardExist(board string) bool {
 // FetchArticles fetches recent articles from the board's index page
 func (c *Crawler) FetchArticles(board string) ([]models.Article, error) {
 	board = strings.TrimSpace(board)
-	urlStr := fmt.Sprintf("https://www.ptt.cc/bbs/%s/index.html", board)
+	canon := CanonicalBoard(board)
+	urlStr := fmt.Sprintf("https://www.ptt.cc/bbs/%s/index.html", canon)
 	req, err := c.newRequest("GET", urlStr)
 	if err != nil {
 		return nil, err
@@ -129,17 +130,17 @@ func (c *Crawler) FetchArticles(board string) ([]models.Article, error) {
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch board %s: %w", board, err)
+		return nil, fmt.Errorf("failed to fetch board %s: %w", canon, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("board %s returned status %d", board, resp.StatusCode)
+		return nil, fmt.Errorf("board %s returned status %d", canon, resp.StatusCode)
 	}
 
 	doc, err := html.Parse(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse html for board %s: %w", board, err)
+		return nil, fmt.Errorf("failed to parse html for board %s: %w", canon, err)
 	}
 
 	articles := ParseIndexHTML(board, doc)
@@ -170,17 +171,20 @@ func (c *Crawler) FetchArticlesRSS(board string) ([]models.Article, error) {
 		return nil, fmt.Errorf("board name is empty")
 	}
 
-	// Try canonical case variations (e.g. Gossiping, Stock, Beauty)
+	canon := CanonicalBoard(board)
 	variations := []string{
-		board,
+		canon,
+	}
+	if canon != board {
+		variations = append(variations, board)
 	}
 	if len(board) > 0 {
 		capitalized := strings.ToUpper(board[:1]) + strings.ToLower(board[1:])
-		if capitalized != board {
-			variations = append([]string{capitalized}, variations...)
+		if capitalized != board && capitalized != canon {
+			variations = append(variations, capitalized)
 		}
 		upper := strings.ToUpper(board)
-		if upper != board && upper != capitalized {
+		if upper != board && upper != canon && upper != capitalized {
 			variations = append(variations, upper)
 		}
 	}
