@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
@@ -89,18 +91,48 @@ func main() {
 		if board == "" {
 			board = "Stock"
 		}
+
+		// Raw test
+		req, _ := http.NewRequest("GET", "https://www.ptt.cc/bbs/"+board+"/index.html", nil)
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+		req.Header.Set("Cookie", "over18=1")
+		resp, err := http.DefaultClient.Do(req)
+		var rawStatus int
+		var rawBody string
+		if err == nil {
+			rawStatus = resp.StatusCode
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if len(b) > 400 {
+				rawBody = string(b[:400])
+			} else {
+				rawBody = string(b)
+			}
+		}
+
 		arts, err := pttCrawler.FetchArticles(board)
 		rssArts, rssErr := pttCrawler.FetchArticlesRSS(board)
-		exists := pttCrawler.CheckBoardExist(board)
+
+		// Test curl from container
+		curlOut, curlErr := exec.Command("curl", "-s", "-i", "-b", "over18=1", "-A", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36", "https://www.ptt.cc/bbs/"+board+"/index.html").CombinedOutput()
+		var curlSnippet string
+		if len(curlOut) > 300 {
+			curlSnippet = string(curlOut[:300])
+		} else {
+			curlSnippet = string(curlOut)
+		}
 
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"board":      board,
-			"exists":     exists,
-			"html_count": len(arts),
-			"html_err":   fmt.Sprint(err),
-			"rss_count":  len(rssArts),
-			"rss_err":    fmt.Sprint(rssErr),
+			"board":        board,
+			"raw_status":   rawStatus,
+			"raw_body":     rawBody,
+			"curl_err":     fmt.Sprint(curlErr),
+			"curl_snippet": curlSnippet,
+			"html_count":   len(arts),
+			"html_err":     fmt.Sprint(err),
+			"rss_count":    len(rssArts),
+			"rss_err":      fmt.Sprint(rssErr),
 		})
 	})
 
