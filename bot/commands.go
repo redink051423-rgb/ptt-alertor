@@ -12,7 +12,7 @@ import (
 	"github.com/ptt-alertor/ptt-alertor/storage"
 )
 
-var boardRegex = regexp.MustCompile(`^[a-zA-Z0-9_\-]{2,30}$`)
+var boardRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]{2,30}$`)
 
 func isValidBoardName(name string) bool {
 	return boardRegex.MatchString(strings.TrimSpace(name))
