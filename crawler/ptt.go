@@ -186,23 +186,27 @@ func (c *Crawler) FetchArticlesRSS(board string) ([]models.Article, error) {
 	}
 
 	var lastErr error
+	var errDetails []string
 	for _, bName := range variations {
 		urlStr := fmt.Sprintf("https://www.ptt.cc/atom/%s.xml", bName)
 		req, err := c.newRequest("GET", urlStr)
 		if err != nil {
 			lastErr = err
+			errDetails = append(errDetails, fmt.Sprintf("%s req err: %v", bName, err))
 			continue
 		}
 
 		resp, err := c.client.Do(req)
 		if err != nil {
 			lastErr = err
+			errDetails = append(errDetails, fmt.Sprintf("%s do err: %v", bName, err))
 			continue
 		}
 
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
 			lastErr = fmt.Errorf("rss %s returned status %d", bName, resp.StatusCode)
+			errDetails = append(errDetails, fmt.Sprintf("%s status: %d", bName, resp.StatusCode))
 			continue
 		}
 
@@ -210,12 +214,14 @@ func (c *Crawler) FetchArticlesRSS(board string) ([]models.Article, error) {
 		resp.Body.Close()
 		if err != nil {
 			lastErr = err
+			errDetails = append(errDetails, fmt.Sprintf("%s read err: %v", bName, err))
 			continue
 		}
 
 		var feed atomFeed
 		if err := xml.Unmarshal(body, &feed); err != nil {
 			lastErr = err
+			errDetails = append(errDetails, fmt.Sprintf("%s unmarshal err: %v", bName, err))
 			continue
 		}
 
@@ -237,5 +243,5 @@ func (c *Crawler) FetchArticlesRSS(board string) ([]models.Article, error) {
 		return articles, nil
 	}
 
-	return nil, fmt.Errorf("all rss variations failed for %s: %v", board, lastErr)
+	return nil, fmt.Errorf("all rss variations failed for %s: %s", board, strings.Join(errDetails, "; "))
 }

@@ -114,8 +114,8 @@ func main() {
 		arts, err := pttCrawler.FetchArticles(board)
 		rssArts, rssErr := pttCrawler.FetchArticlesRSS(board)
 
-		// Test curl from container
-		curlOut, curlErr := exec.Command("curl", "-s", "-i", "-b", "over18=1", "-A", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36", "https://www.ptt.cc/bbs/"+board+"/index.html").CombinedOutput()
+		// Test curl atom from container
+		curlOut, curlErr := exec.Command("curl", "-s", "-i", "-b", "over18=1", "-A", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36", "https://www.ptt.cc/atom/"+board+".xml").CombinedOutput()
 		var curlSnippet string
 		if len(curlOut) > 300 {
 			curlSnippet = string(curlOut[:300])
