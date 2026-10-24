@@ -77,28 +77,40 @@ func (c *Crawler) CheckBoardExist(board string) bool {
 		return false
 	}
 
-	// 1. Try HTML
-	urlStr := fmt.Sprintf("https://www.ptt.cc/bbs/%s/index.html", board)
-	req, err := c.newRequest("GET", urlStr)
-	if err == nil {
-		resp, err := c.client.Do(req)
-		if err == nil {
-			defer resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return true
-			}
+	variations := []string{
+		board,
+	}
+	if len(board) > 0 {
+		capitalized := strings.ToUpper(board[:1]) + strings.ToLower(board[1:])
+		if capitalized != board {
+			variations = append([]string{capitalized}, variations...)
 		}
 	}
 
-	// 2. Try RSS Atom as fallback
-	rssURL := fmt.Sprintf("https://www.ptt.cc/atom/%s.xml", board)
-	reqRSS, err := c.newRequest("GET", rssURL)
-	if err == nil {
-		resp, err := c.client.Do(reqRSS)
+	for _, bName := range variations {
+		// 1. Try RSS Atom first (most reliable through Cloudflare)
+		rssURL := fmt.Sprintf("https://www.ptt.cc/atom/%s.xml", bName)
+		reqRSS, err := c.newRequest("GET", rssURL)
 		if err == nil {
-			defer resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return true
+			resp, err := c.client.Do(reqRSS)
+			if err == nil {
+				resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					return true
+				}
+			}
+		}
+
+		// 2. Try HTML
+		urlStr := fmt.Sprintf("https://www.ptt.cc/bbs/%s/index.html", bName)
+		req, err := c.newRequest("GET", urlStr)
+		if err == nil {
+			resp, err := c.client.Do(req)
+			if err == nil {
+				resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					return true
+				}
 			}
 		}
 	}
@@ -154,47 +166,76 @@ type atomAuthor struct {
 // FetchArticlesRSS fetches recent articles using PTT Atom RSS
 func (c *Crawler) FetchArticlesRSS(board string) ([]models.Article, error) {
 	board = strings.TrimSpace(board)
-	urlStr := fmt.Sprintf("https://www.ptt.cc/atom/%s.xml", board)
-	req, err := c.newRequest("GET", urlStr)
-	if err != nil {
-		return nil, err
+	if board == "" {
+		return nil, fmt.Errorf("board name is empty")
 	}
 
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, err
+	// Try canonical case variations (e.g. Gossiping, Stock, Beauty)
+	variations := []string{
+		board,
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("rss returned status %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var feed atomFeed
-	if err := xml.Unmarshal(body, &feed); err != nil {
-		return nil, err
+	if len(board) > 0 {
+		capitalized := strings.ToUpper(board[:1]) + strings.ToLower(board[1:])
+		if capitalized != board {
+			variations = append([]string{capitalized}, variations...)
+		}
+		upper := strings.ToUpper(board)
+		if upper != board && upper != capitalized {
+			variations = append(variations, upper)
+		}
 	}
 
-	var articles []models.Article
-	for _, entry := range feed.Entries {
-		id := ExtractArticleID(entry.ID)
-		if id == "" {
+	var lastErr error
+	for _, bName := range variations {
+		urlStr := fmt.Sprintf("https://www.ptt.cc/atom/%s.xml", bName)
+		req, err := c.newRequest("GET", urlStr)
+		if err != nil {
+			lastErr = err
 			continue
 		}
-		articles = append(articles, models.Article{
-			ID:     id,
-			Board:  board,
-			Title:  strings.TrimSpace(entry.Title),
-			Author: strings.TrimSpace(entry.Author.Name),
-			Link:   entry.ID,
-			Date:   entry.Published,
-		})
+
+		resp, err := c.client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("rss %s returned status %d", bName, resp.StatusCode)
+			continue
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		var feed atomFeed
+		if err := xml.Unmarshal(body, &feed); err != nil {
+			lastErr = err
+			continue
+		}
+
+		var articles []models.Article
+		for _, entry := range feed.Entries {
+			id := ExtractArticleID(entry.ID)
+			if id == "" {
+				continue
+			}
+			articles = append(articles, models.Article{
+				ID:     id,
+				Board:  board,
+				Title:  strings.TrimSpace(entry.Title),
+				Author: strings.TrimSpace(entry.Author.Name),
+				Link:   entry.ID,
+				Date:   entry.Published,
+			})
+		}
+		return articles, nil
 	}
 
-	return articles, nil
+	return nil, fmt.Errorf("all rss variations failed for %s: %v", board, lastErr)
 }
