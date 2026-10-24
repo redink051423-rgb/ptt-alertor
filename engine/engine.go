@@ -150,21 +150,21 @@ func (e *Engine) matchNewArticle(art models.Article, subs []models.Subscription)
 		case models.SubTypeKeyword:
 			kw := strings.ToLower(sub.Value)
 			if strings.Contains(titleLower, kw) {
-				msg := formatAlertMessage("關鍵字【"+sub.Value+"】", art)
+				msg := e.formatAlertMessage("關鍵字【"+sub.Value+"】", art)
 				_ = e.bot.PushAlert(sub.LineID, msg)
 			}
 
 		case models.SubTypeAuthor:
 			targetAuthor := strings.ToLower(sub.Value)
 			if authorLower == targetAuthor {
-				msg := formatAlertMessage("作者【"+sub.Value+"】", art)
+				msg := e.formatAlertMessage("作者【"+sub.Value+"】", art)
 				_ = e.bot.PushAlert(sub.LineID, msg)
 			}
 
 		case models.SubTypePushSum:
 			threshold := parseThreshold(sub.Value)
 			if threshold > 0 && art.PushSum >= threshold {
-				msg := formatAlertMessage("推文數達標【"+sub.Value+"】", art)
+				msg := e.formatAlertMessage("推文數達標【"+sub.Value+"】", art)
 				_ = e.bot.PushAlert(sub.LineID, msg)
 			}
 		}
@@ -177,7 +177,7 @@ func (e *Engine) matchPushSumIncrease(art models.Article, oldPushSum int, subs [
 			threshold := parseThreshold(sub.Value)
 			// Trigger only when it crosses the threshold in this update
 			if threshold > 0 && oldPushSum < threshold && art.PushSum >= threshold {
-				msg := formatAlertMessage("推文數達標【"+sub.Value+"】", art)
+				msg := e.formatAlertMessage("推文數達標【"+sub.Value+"】", art)
 				_ = e.bot.PushAlert(sub.LineID, msg)
 			}
 		}
@@ -194,7 +194,7 @@ func parseThreshold(val string) int {
 	return 0
 }
 
-func formatAlertMessage(trigger string, art models.Article) string {
+func (e *Engine) formatAlertMessage(trigger string, art models.Article) string {
 	pushText := strconv.Itoa(art.PushSum)
 	if art.PushSum >= 100 {
 		pushText = "爆 (" + pushText + ")"
@@ -202,11 +202,20 @@ func formatAlertMessage(trigger string, art models.Article) string {
 		pushText = "XX (" + pushText + ")"
 	}
 
-	return fmt.Sprintf(`【PTT 文章通知】
+	msg := fmt.Sprintf(`【PTT 文章通知】
 看板：%s
 觸發：%s
 標題：%s
 作者：%s
 推文：%s
 連結：%s`, art.Board, trigger, art.Title, art.Author, pushText, art.Link)
+
+	// High-water mark alert (Option B): Append warning when remaining <= 20
+	if quota, err := e.bot.GetQuota(false); err == nil && quota.Limited && quota.Total > 0 {
+		if quota.Remaining <= 20 {
+			msg += fmt.Sprintf("\n--------------------\n提醒：本月 LINE 免費額度僅剩 %d 則，接近上限。", quota.Remaining)
+		}
+	}
+
+	return msg
 }

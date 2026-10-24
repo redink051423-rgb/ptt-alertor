@@ -11,9 +11,12 @@ import (
 	"github.com/ptt-alertor/ptt-alertor/storage"
 )
 
+type QuotaGetter func(forceFresh bool) (QuotaInfo, error)
+
 type CommandHandler struct {
-	db      *storage.DB
-	crawler *crawler.Crawler
+	db          *storage.DB
+	crawler     *crawler.Crawler
+	quotaGetter QuotaGetter
 }
 
 func NewCommandHandler(db *storage.DB, c *crawler.Crawler) *CommandHandler {
@@ -21,6 +24,10 @@ func NewCommandHandler(db *storage.DB, c *crawler.Crawler) *CommandHandler {
 		db:      db,
 		crawler: c,
 	}
+}
+
+func (h *CommandHandler) SetQuotaGetter(qg QuotaGetter) {
+	h.quotaGetter = qg
 }
 
 // Handle executes user command and returns reply text
@@ -36,6 +43,8 @@ func (h *CommandHandler) Handle(lineID, text string) string {
 	switch cmd {
 	case "指令", "help", "?", "？":
 		return h.getHelpText()
+	case "額度", "quota":
+		return h.handleQuota()
 	case "清單", "list":
 		return h.handleList(lineID)
 	case "清除全部", "clear":
@@ -63,6 +72,7 @@ func (h *CommandHandler) getHelpText() string {
 [一般]
 * 指令：查看功能清單
 * 清單：查看目前追蹤設定
+* 額度：查詢本月剩餘推播額度
 * 清除全部：清空所有追蹤設定
 
 [關鍵字追蹤]
@@ -82,6 +92,27 @@ func (h *CommandHandler) getHelpText() string {
 * 刪除推文數 看板
 範例：新增推文數 beauty 50
 範例：新增推文數 gossiping 爆`
+}
+
+func (h *CommandHandler) handleQuota() string {
+	if h.quotaGetter == nil {
+		return "暫時無法取得額度資訊。"
+	}
+
+	info, err := h.quotaGetter(true)
+	if err != nil {
+		return fmt.Sprintf("查詢額度失敗：%v", err)
+	}
+
+	if !info.Limited {
+		return fmt.Sprintf("【LINE 推播配額報告】\n當前方案：無上限方案\n本月已累計發送：%d 則", info.Used)
+	}
+
+	return fmt.Sprintf(`【LINE 推播配額報告】
+本月額度上限：%d 則
+目前累計發送：%d 則
+剩餘可用額度：%d 則
+（每月 1 號由 LINE 官方自動歸零重置）`, info.Total, info.Used, info.Remaining)
 }
 
 func (h *CommandHandler) handleList(lineID string) string {

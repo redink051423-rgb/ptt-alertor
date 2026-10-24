@@ -4,15 +4,27 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/line/line-bot-sdk-go/v7/linebot"
 	"github.com/ptt-alertor/ptt-alertor/storage"
 )
 
+type QuotaInfo struct {
+	Total     int64
+	Used      int64
+	Remaining int64
+	Limited   bool
+}
+
 type LineBot struct {
-	client     *linebot.Client
-	cmdHandler *CommandHandler
-	db         *storage.DB
+	client      *linebot.Client
+	cmdHandler  *CommandHandler
+	db          *storage.DB
+	quotaMu     sync.Mutex
+	cachedQuota QuotaInfo
+	quotaTime   time.Time
 }
 
 func NewLineBot(secret, token string, cmdHandler *CommandHandler, db *storage.DB) (*LineBot, error) {
@@ -21,11 +33,48 @@ func NewLineBot(secret, token string, cmdHandler *CommandHandler, db *storage.DB
 		return nil, fmt.Errorf("failed to init linebot: %w", err)
 	}
 
-	return &LineBot{
+	bot := &LineBot{
 		client:     client,
 		cmdHandler: cmdHandler,
 		db:         db,
-	}, nil
+	}
+
+	cmdHandler.SetQuotaGetter(bot.GetQuota)
+	return bot, nil
+}
+
+// GetQuota retrieves message quota and consumption from LINE API with caching
+func (b *LineBot) GetQuota(forceFresh bool) (QuotaInfo, error) {
+	b.quotaMu.Lock()
+	defer b.quotaMu.Unlock()
+
+	if !forceFresh && time.Since(b.quotaTime) < 2*time.Minute && b.cachedQuota.Total > 0 {
+		return b.cachedQuota, nil
+	}
+
+	q, err := b.client.GetMessageQuota().Do()
+	if err != nil {
+		return b.cachedQuota, fmt.Errorf("failed to get quota: %w", err)
+	}
+
+	c, err := b.client.GetMessageQuotaConsumption().Do()
+	if err != nil {
+		return b.cachedQuota, fmt.Errorf("failed to get consumption: %w", err)
+	}
+
+	info := QuotaInfo{
+		Total:     q.Value,
+		Used:      c.TotalUsage,
+		Remaining: q.Value - c.TotalUsage,
+		Limited:   q.Type == "limited",
+	}
+	if info.Remaining < 0 {
+		info.Remaining = 0
+	}
+
+	b.cachedQuota = info
+	b.quotaTime = time.Now()
+	return info, nil
 }
 
 // HandleWebhook processes incoming webhook requests from LINE
