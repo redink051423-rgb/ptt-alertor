@@ -79,16 +79,25 @@ func (b *LineBot) extractSourceID(src *linebot.EventSource) string {
 	if src == nil {
 		return ""
 	}
-	if src.UserID != "" {
-		return src.UserID
-	}
-	if src.GroupID != "" {
+	switch src.Type {
+	case linebot.EventSourceTypeGroup:
 		return src.GroupID
-	}
-	if src.RoomID != "" {
+	case linebot.EventSourceTypeRoom:
 		return src.RoomID
+	case linebot.EventSourceTypeUser:
+		return src.UserID
+	default:
+		if src.UserID != "" {
+			return src.UserID
+		}
+		if src.GroupID != "" {
+			return src.GroupID
+		}
+		if src.RoomID != "" {
+			return src.RoomID
+		}
+		return ""
 	}
-	return ""
 }
 
 // PushAlert sends a notification message to a specific LINE user
