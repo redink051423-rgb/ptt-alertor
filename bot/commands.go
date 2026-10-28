@@ -60,6 +60,10 @@ func (h *CommandHandler) Handle(lineID, text string) string {
 		return h.handleAddKeyword(lineID, parts)
 	case "刪除", "del", "delete":
 		return h.handleRemoveKeyword(lineID, parts)
+	case "排除", "exclude":
+		return h.handleAddExclude(lineID, parts)
+	case "刪除排除":
+		return h.handleRemoveExclude(lineID, parts)
 	case "新增作者":
 		return h.handleAddAuthor(lineID, parts)
 	case "刪除作者":
@@ -87,6 +91,13 @@ func (h *CommandHandler) getHelpText() string {
 * 刪除 看板 關鍵字 (* 代表刪除該板所有關鍵字)
 範例：新增 gossiping,stock 台積電,輝達
 範例：刪除 gossiping 台積電
+
+[排除關鍵字 (負向過濾，省額度必備)]
+* 排除 看板 關鍵字 (標題含此字不推播)
+* 刪除排除 看板 關鍵字 (* 代表刪除該板所有排除詞)
+範例：排除 macshop 徵求,換
+範例：刪除排除 macshop 徵求
+(亦支援新增時直接帶減號：新增 macshop 17 pro -徵求)
 
 [作者追蹤]
 * 新增作者 看板 作者 (多個以逗號分隔)
@@ -133,6 +144,7 @@ func (h *CommandHandler) handleList(lineID string) string {
 
 	type boardSub struct {
 		Keywords []string
+		Excludes []string
 		Authors  []string
 		PushSums []string
 	}
@@ -146,6 +158,8 @@ func (h *CommandHandler) handleList(lineID string) string {
 		switch sub.Type {
 		case models.SubTypeKeyword:
 			boardMap[b].Keywords = append(boardMap[b].Keywords, sub.Value)
+		case models.SubTypeExcludeKeyword:
+			boardMap[b].Excludes = append(boardMap[b].Excludes, sub.Value)
 		case models.SubTypeAuthor:
 			boardMap[b].Authors = append(boardMap[b].Authors, sub.Value)
 		case models.SubTypePushSum:
@@ -166,6 +180,9 @@ func (h *CommandHandler) handleList(lineID string) string {
 		sb.WriteString(fmt.Sprintf("\n看板【%s】\n", b))
 		if len(bs.Keywords) > 0 {
 			sb.WriteString(fmt.Sprintf("• 關鍵字: %s\n", strings.Join(bs.Keywords, ", ")))
+		}
+		if len(bs.Excludes) > 0 {
+			sb.WriteString(fmt.Sprintf("• 排除詞: %s\n", strings.Join(bs.Excludes, ", ")))
 		}
 		if len(bs.Authors) > 0 {
 			sb.WriteString(fmt.Sprintf("• 作者: %s\n", strings.Join(bs.Authors, ", ")))
@@ -216,17 +233,84 @@ func (h *CommandHandler) handleAddKeyword(lineID string, parts []string) string 
 		}
 	}
 
-	var addedCount int
+	var posAdded, negAdded int
 	for _, b := range boards {
 		bLower := strings.ToLower(b)
 		for _, kw := range keywords {
-			if err := h.db.AddSubscription(lineID, bLower, models.SubTypeKeyword, kw); err == nil {
-				addedCount++
+			if strings.HasPrefix(kw, "-") {
+				exKw := strings.TrimSpace(strings.TrimPrefix(kw, "-"))
+				if exKw != "" {
+					if err := h.db.AddSubscription(lineID, bLower, models.SubTypeExcludeKeyword, exKw); err == nil {
+						negAdded++
+					}
+				}
+			} else {
+				if err := h.db.AddSubscription(lineID, bLower, models.SubTypeKeyword, kw); err == nil {
+					posAdded++
+				}
 			}
 		}
 	}
 
-	return fmt.Sprintf("新增關鍵字成功！已追蹤 %d 筆規則。", addedCount)
+	if negAdded > 0 {
+		return fmt.Sprintf("新增設定成功！已追蹤 %d 筆關鍵字，已設定 %d 筆排除詞。", posAdded, negAdded)
+	}
+	return fmt.Sprintf("新增關鍵字成功！已追蹤 %d 筆規則。", posAdded)
+}
+
+func (h *CommandHandler) handleAddExclude(lineID string, parts []string) string {
+	if len(parts) < 3 {
+		return "格式錯誤。\n正確範例：排除 macshop 徵求,換"
+	}
+
+	boards := splitTokens(parts[1])
+	keywords := splitTokens(strings.Join(parts[2:], " "))
+
+	if len(boards) == 0 || len(keywords) == 0 {
+		return "格式錯誤：看板名稱與排除關鍵字不可為空。"
+	}
+
+	for _, b := range boards {
+		if !isValidBoardName(b) {
+			return fmt.Sprintf("看板名稱格式不正確：[%s]（僅能包含英數字與底線，長度 2~30 字元）。", b)
+		}
+	}
+
+	var addedCount int
+	for _, b := range boards {
+		bLower := strings.ToLower(b)
+		for _, kw := range keywords {
+			kwClean := strings.TrimSpace(strings.TrimPrefix(kw, "-"))
+			if kwClean != "" {
+				if err := h.db.AddSubscription(lineID, bLower, models.SubTypeExcludeKeyword, kwClean); err == nil {
+					addedCount++
+				}
+			}
+		}
+	}
+
+	return fmt.Sprintf("設定排除關鍵字成功！已新增 %d 筆排除規則。", addedCount)
+}
+
+func (h *CommandHandler) handleRemoveExclude(lineID string, parts []string) string {
+	if len(parts) < 3 {
+		return "格式錯誤。\n正確範例：刪除排除 macshop 徵求 (或使用 * 刪除全部)"
+	}
+
+	boards := splitTokens(parts[1])
+	keywords := splitTokens(strings.Join(parts[2:], " "))
+
+	var removedTotal int64
+	for _, b := range boards {
+		bLower := strings.ToLower(b)
+		for _, kw := range keywords {
+			kwClean := strings.TrimSpace(strings.TrimPrefix(kw, "-"))
+			n, _ := h.db.RemoveSubscription(lineID, bLower, models.SubTypeExcludeKeyword, kwClean)
+			removedTotal += n
+		}
+	}
+
+	return fmt.Sprintf("刪除排除關鍵字完成，共移除 %d 筆設定。", removedTotal)
 }
 
 func (h *CommandHandler) handleRemoveKeyword(lineID string, parts []string) string {

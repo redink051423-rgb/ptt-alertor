@@ -6,9 +6,10 @@ import "time"
 type SubscriptionType string
 
 const (
-	SubTypeKeyword SubscriptionType = "keyword"
-	SubTypeAuthor  SubscriptionType = "author"
-	SubTypePushSum SubscriptionType = "pushsum"
+	SubTypeKeyword        SubscriptionType = "keyword"
+	SubTypeAuthor         SubscriptionType = "author"
+	SubTypePushSum        SubscriptionType = "pushsum"
+	SubTypeExcludeKeyword SubscriptionType = "exclude"
 )
 
 // User represents a registered LINE user
